@@ -1,0 +1,370 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Using AWS CloudFormation to model and provision AWS Glue Workflows,Trigger and Jobs
+
+# Parameters:
+  # GlueWorkflowName:
+  #   Type: String
+  #   Default: workflow_mpl_dev_delta
+
+  # IAMRole:
+  #   Type: String
+  #   Default: arn:aws:iam::514973783741:role/GlueaccesstoS3
+
+  # JobName1:
+  #   Type: String
+  #   Default: caspian_mpl_dev_delta_parquet_transformation
+
+  # JobName2:
+  #   Type: String
+  #   Default: caspian_mpl_dev_delta_analysis_hfitohfs
+
+  # JobName3:
+  #   Type: String
+  #   Default: caspian_mpl_dev_delta_analysis_originations     
+
+  # JobName4:
+  #  Type: String
+  #  Default: caspian_mpl_dev_delta_analysis_servicing
+
+  # JobName5:
+  #  Type: String
+  #  Default: caspian_mpl_dev_delta_analysis_mpl_monthly_serv_intermediate
+
+  # JobName6:
+  #  Type: String
+  #  Default: caspian_mpl_dev_delta_analysis_mpl_loan_sales
+
+  # JobName7:
+  #  Type: String
+  #  Default: caspian_mpl_dev_delta_analysis_mpl_monthly_serv
+
+  # TriggerOne:
+  #  Type: String
+  #  Default: trigger_mpl_dev_delta_parquet_transformation
+
+# TriggerTwo:
+  # Type: String
+  # Default: trigger_mpl_dev_delta_views
+
+# TriggerThree:
+ # Type: String
+ # Default: trigger_mpl_dev_delta_analysis_mpl_monthly_serv_intermediate
+
+ # TriggerFour:
+ #  Type: String
+ #  Default: trigger_mpl_dev_delta_analysis_mpl_loan_sales
+
+# TriggerFive:
+  # Type: String
+  # Default: trigger_mpl_dev_delta_analysis_mpl_monthly_serv
+
+Mappings:
+  GlueConfig:
+    GlueWorkflow:
+      Name: '{{ environment.inputs.glueworkflow_name }}'
+
+  IAM:
+    Role:
+      Name: '{{ environment.inputs.iam_role }}'
+
+  Job1:
+    One:
+      Name: '{{ environment.inputs.job1 }}'
+
+  Job2:
+    Two:
+      Name: '{{ environment.inputs.job2 }}'
+
+  Job3:
+    Three:
+      Name: '{{ environment.inputs.job3 }}'
+
+  Job4:
+    Four:
+      Name: '{{ environment.inputs.job4 }}'
+
+  Job5:
+    Five:
+      Name: '{{ environment.inputs.job5 }}'
+
+  Job6:
+    Six:
+      Name: '{{ environment.inputs.job6 }}'
+
+  Job7:
+    Seven:
+      Name: '{{ environment.inputs.job7 }}'
+
+  Trigger1:
+    One:
+      Name: '{{ environment.inputs.trigger1 }}'
+  
+  Trigger2:
+    Two:
+      Name: '{{ environment.inputs.trigger2 }}'
+
+  Trigger3:
+    Three:
+      Name: '{{ environment.inputs.trigger3 }}'
+
+  Trigger4:
+    Four:
+      Name: '{{ environment.inputs.trigger4}}'
+
+  Trigger5:
+    Five:
+      Name: '{{ environment.inputs.trigger5 }}'
+
+
+Resources:
+  # Glue Workflow
+  GlueWorkflow:
+    Type: AWS::Glue::Workflow
+    Properties: 
+      Description: Glue workflow that tracks specified triggers, jobs, and crawlers as a single entity
+      Name: !FindInMap ['GlueConfig', 'GlueWorkflow', 'Name']
+
+  # Glue Triggers
+  parquettransformation:
+    Type: AWS::Glue::Trigger
+    Properties:
+      Name: !FindInMap ['Trigger1','One', 'Name']
+      Type: SCHEDULED
+      Schedule: cron(45 11 ? * MON-FRI *) # Runs once a day at 11:45 AM UTC
+      StartOnCreation: true
+      WorkflowName: !FindInMap ['GlueConfig', 'GlueWorkflow', 'Name']
+      Actions:
+        - JobName: !Ref CFNRGlueETL1
+  
+  deltaviews:
+    Type: AWS::Glue::Trigger
+    Properties:
+      Name: !FindInMap ['Trigger2','Two', 'Name']
+      Type: CONDITIONAL
+      StartOnCreation: true
+      WorkflowName: !FindInMap ['GlueConfig', 'GlueWorkflow', 'Name']
+      Predicate:
+        Conditions:
+          - LogicalOperator: EQUALS
+            JobName: !Ref CFNRGlueETL1
+            State: SUCCEEDED
+      Actions:
+        - JobName: !Ref CFNRGlueETL2
+        - JobName: !Ref CFNRGlueETL3
+        - JobName: !Ref CFNRGlueETL4
+
+  deltaanalysis:
+    Type: AWS::Glue::Trigger
+    Properties:
+      Name: !FindInMap ['Trigger3','Three', 'Name']
+      Type: CONDITIONAL
+      StartOnCreation: true
+      WorkflowName: !FindInMap ['GlueConfig', 'GlueWorkflow', 'Name']
+      Predicate:
+        Conditions:
+          - LogicalOperator: EQUALS
+            JobName: !Ref CFNRGlueETL4
+            State: SUCCEEDED
+      Actions:
+        - JobName: !Ref CFNRGlueETL5
+
+
+  mplloansales:
+    Type: AWS::Glue::Trigger
+    Properties:
+      Name: !FindInMap ['Trigger4','Four', 'Name']
+      Type: CONDITIONAL
+      StartOnCreation: true
+      WorkflowName: !FindInMap ['GlueConfig', 'GlueWorkflow', 'Name']
+      Predicate:
+        Conditions:
+          - LogicalOperator: EQUALS
+            JobName: !Ref CFNRGlueETL5
+            State: SUCCEEDED
+      Actions:
+        - JobName: !Ref CFNRGlueETL6 
+  
+  mplmontlyserv:
+    Type: AWS::Glue::Trigger
+    Properties:
+      Name: !FindInMap ['Trigger5','Five', 'Name']
+      Type: CONDITIONAL
+      StartOnCreation: true
+      WorkflowName: !FindInMap ['GlueConfig', 'GlueWorkflow', 'Name']
+      Predicate:
+        Conditions:
+          - LogicalOperator: EQUALS
+            JobName: !Ref CFNRGlueETL6
+            State: SUCCEEDED
+      Actions:
+        - JobName: !Ref CFNRGlueETL7
+
+  #Glue Job
+  CFNRGlueETL1:
+    Type: AWS::Glue::Job   
+    Properties:
+      Role: !FindInMap ['IAM', 'Role', 'Name']
+      Command:   
+        Name: glueetl  
+        ScriptLocation: "s3://aws-glue-scripts-881689400308-us-east-1/admin/caspian_mpl_dev_delta_parquet_transformation"
+      AllocatedCapacity: 30  
+      ExecutionProperty:   
+        MaxConcurrentRuns: 1        
+      Name: !FindInMap ['Job1', 'One', 'Name']
+      DefaultArguments:
+        '--conf': 'spark.delta.logStore.class=org.apache.spark.sql.delta.storage.S3SingleDriverLogStore --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension --conf spark.driver.maxResultSize=2g'
+        '--TempDir': "s3://aws-glue-temporary-881689400308-us-east-1/admin"
+        '--job-bookmark-option': 'job-bookmark-disable'
+        '--enable-metrics' : ''
+        '--enable-continuous-cloudwatch-log' : true
+        '--enable-continuous-log-filter' : true
+        '--enable-spark-ui' : true
+        '--spark-event-logs-path' : 's3://gluejob-logs-list'
+        '--extra-py-files' : 's3://glue-libraries-list/pylib/delta-1.0-py2.py3-none-any.whl'
+        "--extra-jars": "s3://glue-libraries-list/jar/delta-core_2.11-0.6.1.jar,s3://glue-libraries-list/jar/redshift-jdbc42-2.0.0.4.jar,s3://glue-libraries-list/jar/spark-redshift_2.11-2.0.1.jar,s3://glue-libraries-list/jar/spark-avro_2.11-2.4.0.jar"
+      GlueVersion: 2.0
+
+  CFNRGlueETL2:
+    Type: AWS::Glue::Job   
+    Properties:
+      Role: !FindInMap ['IAM', 'Role', 'Name']
+      Command:   
+        Name: glueetl  
+        ScriptLocation: "s3://aws-glue-scripts-881689400308-us-east-1/admin/caspian_mpl_dev_delta_analysis_hfitohfs"
+      AllocatedCapacity: 10  
+      ExecutionProperty:   
+        MaxConcurrentRuns: 1        
+      Name: !FindInMap ['Job2', 'Two', 'Name']
+      DefaultArguments:
+        '--conf': 'spark.delta.logStore.class=org.apache.spark.sql.delta.storage.S3SingleDriverLogStore --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension --conf spark.driver.maxResultSize=2g'
+        '--TempDir': "s3://aws-glue-temporary-881689400308-us-east-1/admin"
+        '--job-bookmark-option': 'job-bookmark-disable'
+        '--enable-metrics' : ''
+        '--enable-continuous-cloudwatch-log' : true
+        '--enable-continuous-log-filter' : true
+        '--enable-spark-ui' : true
+        '--spark-event-logs-path' : 's3://gluejob-logs-list'
+        '--extra-py-files' : 's3://glue-libraries-list/pylib/delta-1.0-py2.py3-none-any.whl'
+        "--extra-jars": "s3://glue-libraries-list/jar/delta-core_2.11-0.6.1.jar,s3://glue-libraries-list/jar/redshift-jdbc42-2.0.0.4.jar,s3://glue-libraries-list/jar/spark-redshift_2.11-2.0.1.jar,s3://glue-libraries-list/jar/spark-avro_2.11-2.4.0.jar"
+      GlueVersion: 2.0
+
+  CFNRGlueETL3:
+    Type: AWS::Glue::Job   
+    Properties:
+      Role: !FindInMap ['IAM', 'Role', 'Name']
+      Command:   
+        Name: glueetl  
+        ScriptLocation: "s3://aws-glue-scripts-881689400308-us-east-1/admin/caspian_mpl_dev_delta_analysis_originations"
+      AllocatedCapacity: 10  
+      ExecutionProperty:   
+        MaxConcurrentRuns: 1        
+      Name: !FindInMap ['Job3', 'Three', 'Name']
+      DefaultArguments:
+        '--conf': 'spark.delta.logStore.class=org.apache.spark.sql.delta.storage.S3SingleDriverLogStore --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension --conf spark.driver.maxResultSize=2g'
+        '--TempDir': "s3://aws-glue-temporary-881689400308-us-east-1/admin"
+        '--job-bookmark-option': 'job-bookmark-disable'
+        '--enable-metrics' : ''
+        '--enable-continuous-cloudwatch-log' : true
+        '--enable-continuous-log-filter' : true
+        '--enable-spark-ui' : true
+        '--spark-event-logs-path' : 's3://gluejob-logs-list'
+        '--extra-py-files' : 's3://glue-libraries-list/pylib/delta-1.0-py2.py3-none-any.whl'
+        "--extra-jars": "s3://glue-libraries-list/jar/delta-core_2.11-0.6.1.jar,s3://glue-libraries-list/jar/redshift-jdbc42-2.0.0.4.jar,s3://glue-libraries-list/jar/spark-redshift_2.11-2.0.1.jar,s3://glue-libraries-list/jar/spark-avro_2.11-2.4.0.jar"
+      GlueVersion: 2.0
+  
+  CFNRGlueETL4:
+    Type: AWS::Glue::Job   
+    Properties:
+      Role: !FindInMap ['IAM', 'Role', 'Name']
+      Command:   
+        Name: glueetl  
+        ScriptLocation: "s3://aws-glue-scripts-881689400308-us-east-1/admin/caspian_mpl_dev_delta_analysis_servicing"
+      AllocatedCapacity: 10  
+      ExecutionProperty:   
+        MaxConcurrentRuns: 1        
+      Name: !FindInMap ['Job4', 'Four', 'Name']
+      DefaultArguments:
+        '--conf': 'spark.delta.logStore.class=org.apache.spark.sql.delta.storage.S3SingleDriverLogStore --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension --conf spark.driver.maxResultSize=2g'
+        '--TempDir': "s3://aws-glue-temporary-881689400308-us-east-1/admin"
+        '--job-bookmark-option': 'job-bookmark-disable'
+        '--enable-metrics' : ''
+        '--enable-continuous-cloudwatch-log' : true
+        '--enable-continuous-log-filter' : true
+        '--enable-spark-ui' : true
+        '--spark-event-logs-path' : 's3://gluejob-logs-list'
+        '--extra-py-files' : 's3://glue-libraries-list/pylib/delta-1.0-py2.py3-none-any.whl'
+        "--extra-jars": "s3://glue-libraries-list/jar/delta-core_2.11-0.6.1.jar,s3://glue-libraries-list/jar/redshift-jdbc42-2.0.0.4.jar,s3://glue-libraries-list/jar/spark-redshift_2.11-2.0.1.jar,s3://glue-libraries-list/jar/spark-avro_2.11-2.4.0.jar"
+      GlueVersion: 2.0
+
+  CFNRGlueETL5:
+    Type: AWS::Glue::Job   
+    Properties:
+      Role: !FindInMap ['IAM', 'Role', 'Name']
+      Command:   
+        Name: glueetl  
+        ScriptLocation: "s3://aws-glue-scripts-881689400308-us-east-1/admin/caspian_mpl_dev_delta_analysis_mpl_monthly_serv_intermediate"
+      AllocatedCapacity: 25  
+      ExecutionProperty:   
+        MaxConcurrentRuns: 1        
+      Name: !FindInMap ['Job5', 'Five', 'Name']
+      DefaultArguments:
+        '--conf': 'spark.delta.logStore.class=org.apache.spark.sql.delta.storage.S3SingleDriverLogStore --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension --conf spark.driver.maxResultSize=2g'
+        '--TempDir': "s3://aws-glue-temporary-881689400308-us-east-1/admin"
+        '--job-bookmark-option': 'job-bookmark-disable'
+        '--enable-metrics' : ''
+        '--enable-continuous-cloudwatch-log' : true
+        '--enable-continuous-log-filter' : true
+        '--enable-spark-ui' : true
+        '--spark-event-logs-path' : 's3://gluejob-logs-list'
+        '--extra-py-files' : 's3://glue-libraries-list/pylib/delta-1.0-py2.py3-none-any.whl'
+        "--extra-jars": "s3://glue-libraries-list/jar/delta-core_2.11-0.6.1.jar,s3://glue-libraries-list/jar/redshift-jdbc42-2.0.0.4.jar,s3://glue-libraries-list/jar/spark-redshift_2.11-2.0.1.jar,s3://glue-libraries-list/jar/spark-avro_2.11-2.4.0.jar"
+      GlueVersion: 2.0
+
+  CFNRGlueETL6:
+    Type: AWS::Glue::Job   
+    Properties:
+      Role: !FindInMap ['IAM', 'Role', 'Name']
+      Command:   
+        Name: glueetl  
+        ScriptLocation: "s3://aws-glue-scripts-881689400308-us-east-1/admin/caspian_mpl_dev_delta_analysis_mpl_loan_sales"
+      AllocatedCapacity: 10  
+      ExecutionProperty:   
+        MaxConcurrentRuns: 1        
+      Name: !FindInMap ['Job6', 'Six', 'Name']
+      DefaultArguments:
+        '--conf': 'spark.delta.logStore.class=org.apache.spark.sql.delta.storage.S3SingleDriverLogStore --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension --conf spark.driver.maxResultSize=2g'
+        '--TempDir': "s3://aws-glue-temporary-881689400308-us-east-1/admin"
+        '--job-bookmark-option': 'job-bookmark-disable'
+        '--enable-metrics' : ''
+        '--enable-continuous-cloudwatch-log' : true
+        '--enable-continuous-log-filter' : true
+        '--enable-spark-ui' : true
+        '--spark-event-logs-path' : 's3://gluejob-logs-list'
+        '--extra-py-files' : 's3://glue-libraries-list/pylib/delta-1.0-py2.py3-none-any.whl'
+        "--extra-jars": "s3://glue-libraries-list/jar/delta-core_2.11-0.6.1.jar,s3://glue-libraries-list/jar/redshift-jdbc42-2.0.0.4.jar,s3://glue-libraries-list/jar/spark-redshift_2.11-2.0.1.jar,s3://glue-libraries-list/jar/spark-avro_2.11-2.4.0.jar"
+      GlueVersion: 2.0
+
+
+  CFNRGlueETL7:
+    Type: AWS::Glue::Job   
+    Properties:
+      Role: !FindInMap ['IAM', 'Role', 'Name']
+      Command:   
+        Name: glueetl  
+        ScriptLocation: "s3://aws-glue-scripts-881689400308-us-east-1/admin/caspian_mpl_dev_delta_analysis_mpl_monthly_serv"
+      AllocatedCapacity: 30  
+      ExecutionProperty:   
+        MaxConcurrentRuns: 1        
+      Name: !FindInMap ['Job7', 'Seven', 'Name']
+      DefaultArguments:
+        '--conf': 'spark.delta.logStore.class=org.apache.spark.sql.delta.storage.S3SingleDriverLogStore --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension --conf spark.driver.maxResultSize=2g'
+        '--TempDir': "s3://aws-glue-temporary-881689400308-us-east-1/admin"
+        '--job-bookmark-option': 'job-bookmark-disable'
+        '--enable-metrics' : ''
+        '--enable-continuous-cloudwatch-log' : true
+        '--enable-continuous-log-filter' : true
+        '--enable-spark-ui' : true
+        '--spark-event-logs-path' : 's3://gluejob-logs-list'
+        '--extra-py-files' : 's3://glue-libraries-list/pylib/delta-1.0-py2.py3-none-any.whl'
+        "--extra-jars": "s3://glue-libraries-list/jar/delta-core_2.11-0.6.1.jar,s3://glue-libraries-list/jar/redshift-jdbc42-2.0.0.4.jar,s3://glue-libraries-list/jar/spark-redshift_2.11-2.0.1.jar,s3://glue-libraries-list/jar/spark-avro_2.11-2.4.0.jar"
+      GlueVersion: 2.0    
